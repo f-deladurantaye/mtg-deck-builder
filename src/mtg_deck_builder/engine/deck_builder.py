@@ -108,10 +108,11 @@ class DeckBuilder:
         """Get the commander card."""
         # Query for commander by name and color identity
         query = "SELECT * FROM cards WHERE name = ? AND commander_legal = true"
-        result = self.card_index.conn.execute(query, (commander_name,)).fetchone()
+        relation = self.card_index.conn.execute(query, (commander_name,))
+        result = relation.fetchone()
 
         if result:
-            columns = [desc[0] for desc in self.card_index.conn.description]
+            columns = [col[0] for col in relation.description]
             card = dict(zip(columns, result))
             # Verify color identity matches
             card_colors = set(card.get("color_identity", []))
@@ -127,14 +128,16 @@ class DeckBuilder:
         # Query for basic lands and lands matching color identity
         # Join with card_features to check is_land_only
         if exclusions:
-            query = """
+            # Use proper parameterization for IN clause
+            placeholders = ",".join("?" * len(exclusions))
+            query = f"""
                 SELECT c.* FROM cards c
                 JOIN card_features cf ON c.scryfall_id = cf.scryfall_id
                 WHERE cf.is_land_only = true
                 AND c.commander_legal = true
-                AND c.name NOT IN ({})
+                AND c.name NOT IN ({placeholders})
                 LIMIT ?
-            """.format(",".join("?" * len(exclusions)))
+            """
             params = list(exclusions) + [target]
         else:
             query = """
@@ -146,9 +149,15 @@ class DeckBuilder:
             """
             params = [target]
 
-        result = self.card_index.conn.execute(query, params).fetchall()
-        columns = [desc[0] for desc in self.card_index.conn.description]
-        return [dict(zip(columns, row)) for row in result]
+        try:
+            relation = self.card_index.conn.execute(query, params)
+            result = relation.fetchall()
+            columns = [col[0] for col in relation.description]
+            return [dict(zip(columns, row)) for row in result]
+        except Exception as e:
+            # Return empty list on error rather than crashing
+            print(f"Warning: Error fetching lands: {e}")
+            return []
 
     def _get_role_candidates(
         self,
@@ -161,44 +170,82 @@ class DeckBuilder:
         """Get candidates for a specific role."""
         # Get all cards matching the role
         # Join cards with card_features to filter by role
-        query = """
-            SELECT c.* FROM cards c
-            JOIN card_features cf ON c.scryfall_id = cf.scryfall_id
-            WHERE c.commander_legal = true
-            AND c.name NOT IN ({})
-            AND c.scryfall_id NOT IN ({})
-        """.format(
-            ",".join("?" * len(exclusions)),
-            ",".join("?" * len(current_deck)),
-        )
+        # Use proper parameterization for IN clauses
+        if exclusions and current_deck:
+            exclusion_placeholders = ",".join("?" * len(exclusions))
+            deck_placeholders = ",".join("?" * len(current_deck))
+            query = f"""
+                SELECT c.* FROM cards c
+                JOIN card_features cf ON c.scryfall_id = cf.scryfall_id
+                WHERE c.commander_legal = true
+                AND c.name NOT IN ({exclusion_placeholders})
+                AND c.scryfall_id NOT IN ({deck_placeholders})
+            """
+            params = list(exclusions) + [c["scryfall_id"] for c in current_deck]
+        elif exclusions:
+            exclusion_placeholders = ",".join("?" * len(exclusions))
+            query = f"""
+                SELECT c.* FROM cards c
+                JOIN card_features cf ON c.scryfall_id = cf.scryfall_id
+                WHERE c.commander_legal = true
+                AND c.name NOT IN ({exclusion_placeholders})
+            """
+            params = list(exclusions)
+        elif current_deck:
+            deck_placeholders = ",".join("?" * len(current_deck))
+            query = f"""
+                SELECT c.* FROM cards c
+                JOIN card_features cf ON c.scryfall_id = cf.scryfall_id
+                WHERE c.commander_legal = true
+                AND c.scryfall_id NOT IN ({deck_placeholders})
+            """
+            params = [c["scryfall_id"] for c in current_deck]
+        else:
+            query = """
+                SELECT c.* FROM cards c
+                JOIN card_features cf ON c.scryfall_id = cf.scryfall_id
+                WHERE c.commander_legal = true
+            """
+            params = []
 
-        params = list(exclusions) + [c["scryfall_id"] for c in current_deck]
-        result = self.card_index.conn.execute(query, params).fetchall()
-        columns = [desc[0] for desc in self.card_index.conn.description]
-        all_cards = [dict(zip(columns, row)) for row in result]
+        try:
+            relation = self.card_index.conn.execute(query, params)
+            result = relation.fetchall()
+            columns = [col[0] for col in relation.description]
+            all_cards = [dict(zip(columns, row)) for row in result]
+        except Exception as e:
+            print(f"Warning: Error fetching role candidates: {e}")
+            return []
 
         # Filter by role using role engine
         # Need to get features for each card
         candidates = []
         for card in all_cards:
-            # Get features from card_features table
-            feature_query = "SELECT * FROM card_features WHERE scryfall_id = ?"
-            feature_row = self.card_index.conn.execute(
-                feature_query, (card["scryfall_id"],)
-            ).fetchone()
+            try:
+                # Get features from card_features table
+                feature_query = "SELECT * FROM card_features WHERE scryfall_id = ?"
+                feature_relation = self.card_index.conn.execute(
+                    feature_query, (card["scryfall_id"],)
+                )
+                feature_row = feature_relation.fetchone()
 
-            if feature_row:
-                feature_cols = [desc[0] for desc in self.card_index.conn.description]
-                features_dict = dict(zip(feature_cols, feature_row))
-                # Convert to boolean dict (excluding scryfall_id)
-                features = {
-                    k: bool(v) for k, v in features_dict.items() if k != "scryfall_id"
-                }
+                if feature_row:
+                    feature_cols = [col[0] for col in feature_relation.description]
+                    features_dict = dict(zip(feature_cols, feature_row))
+                    # Convert to boolean dict (excluding scryfall_id)
+                    features = {
+                        k: bool(v)
+                        for k, v in features_dict.items()
+                        if k != "scryfall_id"
+                    }
 
-                if self.role_engine.card_matches_role(features, role_name):
-                    candidates.append(card)
-                    if len(candidates) >= needed:
-                        break
+                    if self.role_engine.card_matches_role(features, role_name):
+                        candidates.append(card)
+                        if len(candidates) >= needed:
+                            break
+            except Exception as e:
+                print(f"Warning: Error fetching features for card {card['name']}: {e}")
+                continue
 
         return candidates
 
@@ -212,35 +259,56 @@ class DeckBuilder:
         """Get filler cards to reach 99."""
         # Simple filler: any legal card not already in deck
         # Join with card_features to exclude lands
-        if exclusions:
-            query = """
+        if exclusions and current_deck:
+            exclusion_placeholders = ",".join("?" * len(exclusions))
+            deck_placeholders = ",".join("?" * len(current_deck))
+            query = f"""
                 SELECT c.* FROM cards c
                 JOIN card_features cf ON c.scryfall_id = cf.scryfall_id
                 WHERE c.commander_legal = true
-                AND c.name NOT IN ({})
-                AND c.scryfall_id NOT IN ({})
+                AND c.name NOT IN ({exclusion_placeholders})
+                AND c.scryfall_id NOT IN ({deck_placeholders})
                 AND cf.is_land_only = false
                 LIMIT ?
-            """.format(
-                ",".join("?" * len(exclusions)),
-                ",".join("?" * len(current_deck)),
-            )
+            """
             params = (
                 list(exclusions) + [c["scryfall_id"] for c in current_deck] + [needed]
             )
+        elif exclusions:
+            exclusion_placeholders = ",".join("?" * len(exclusions))
+            query = f"""
+                SELECT c.* FROM cards c
+                JOIN card_features cf ON c.scryfall_id = cf.scryfall_id
+                WHERE c.commander_legal = true
+                AND c.name NOT IN ({exclusion_placeholders})
+                AND cf.is_land_only = false
+                LIMIT ?
+            """
+            params = list(exclusions) + [needed]
+        elif current_deck:
+            deck_placeholders = ",".join("?" * len(current_deck))
+            query = f"""
+                SELECT c.* FROM cards c
+                JOIN card_features cf ON c.scryfall_id = cf.scryfall_id
+                WHERE c.commander_legal = true
+                AND c.scryfall_id NOT IN ({deck_placeholders})
+                AND cf.is_land_only = false
+                LIMIT ?
+            """
+            params = [c["scryfall_id"] for c in current_deck] + [needed]
         else:
             query = """
                 SELECT c.* FROM cards c
                 JOIN card_features cf ON c.scryfall_id = cf.scryfall_id
                 WHERE c.commander_legal = true
-                AND c.scryfall_id NOT IN ({})
                 AND cf.is_land_only = false
                 LIMIT ?
-            """.format(",".join("?" * len(current_deck)))
-            params = [c["scryfall_id"] for c in current_deck] + [needed]
+            """
+            params = [needed]
 
-        result = self.card_index.conn.execute(query, params).fetchall()
-        columns = [desc[0] for desc in self.card_index.conn.description]
+        relation = self.card_index.conn.execute(query, params)
+        result = relation.fetchall()
+        columns = [col[0] for col in relation.description]
         return [dict(zip(columns, row)) for row in result]
 
     def _get_card_by_name(
@@ -248,9 +316,10 @@ class DeckBuilder:
     ) -> dict[str, Any] | None:
         """Get a card by name."""
         query = "SELECT * FROM cards WHERE name = ? AND commander_legal = true"
-        result = self.card_index.conn.execute(query, (card_name,)).fetchone()
+        relation = self.card_index.conn.execute(query, (card_name,))
+        result = relation.fetchone()
 
         if result:
-            columns = [desc[0] for desc in self.card_index.conn.description]
+            columns = [col[0] for col in relation.description]
             return dict(zip(columns, result))
         return None

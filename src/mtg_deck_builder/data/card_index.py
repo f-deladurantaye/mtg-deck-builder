@@ -25,14 +25,14 @@ class CardIndex:
                 cmc INTEGER NOT NULL,
                 type_line VARCHAR NOT NULL,
                 oracle_text TEXT,
-                colors ARRAY<VARCHAR>,
-                color_identity ARRAY<VARCHAR>,
+                colors VARCHAR[],
+                color_identity VARCHAR[],
                 rarity VARCHAR,
                 commander_legal BOOLEAN NOT NULL,
                 power VARCHAR,
                 toughness VARCHAR,
-                keywords ARRAY<VARCHAR>,
-                produced_mana ARRAY<VARCHAR>
+                keywords VARCHAR[],
+                produced_mana VARCHAR[]
             )
             """
         )
@@ -144,8 +144,9 @@ class CardIndex:
             params.append(len(color_identity))
             # This is a simplified check; full implementation would check subset
 
-        result = self.conn.execute(query, params).fetchall()
-        columns = [desc[0] for desc in self.conn.description]
+        relation = self.conn.execute(query, params)
+        result = relation.fetchall()
+        columns = [col[0] for col in relation.description]
         return [dict(zip(columns, row)) for row in result]
 
     def close(self) -> None:

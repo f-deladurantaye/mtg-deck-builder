@@ -2,7 +2,7 @@
 
 This document tracks the implementation progress of the MTG Commander Deck Builder project.
 
-Last updated: 2024-12-19
+Last updated: 2024-12-29
 
 ## Overview
 
@@ -183,23 +183,31 @@ Following the plan in `plan.md`, we're implementing Phase 1 (Hard Core) componen
 
 ## Known Issues / TODOs
 
-1. **DuckDB Array Handling**: Need to verify array insertion works correctly with DuckDB
-2. **Error Handling**: Limited error handling in API client and deck builder
-3. **Color Identity Filtering**: Simplified implementation - may need full subset checking
-4. **Land Selection**: Basic land selection - may need better logic for color identity matching
-5. **Feature Extraction**: Regex patterns may miss edge cases - needs testing with real cards
-6. **Deck Size Validation**: Should verify exactly 99 cards (excluding commander)
-7. **Duplicate Prevention**: Basic implementation - may need refinement
+1. **Color Identity Filtering**: Simplified implementation - only checks array length, not actual subset matching. Full implementation would check that card's color_identity is a subset of the deck's color_identity.
+2. **Land Selection**: Basic land selection - may need better logic for color identity matching (e.g., prioritize lands that match deck colors)
+3. **Feature Extraction**: Regex patterns may miss edge cases - needs testing with real cards
+4. **Index Query**: Default query should index all commander-legal cards, not just commanders. Updated to `game:paper is:commander-legal` but needs testing with full dataset.
+
+---
+
+## Recent Fixes (2024-12-30)
+
+1. **Fixed DuckDB Array Syntax**: Changed from `ARRAY<VARCHAR>` to `VARCHAR[]` for DuckDB compatibility
+2. **Fixed DuckDB Cursor Description**: Updated all queries to access `.description` from relation objects, not connection
+3. **Fixed SQL IN Clause Parameterization**: Properly parameterized all SQL queries with IN clauses
+4. **Added Error Handling**: Added comprehensive error handling throughout CLI and deck builder
+5. **Tested Index Building**: Successfully tested with Scryfall API (11,186 cards indexed)
+6. **Tested Deck Building**: Successfully built a 99-card deck with Atraxa, Praetors' Voice
 
 ---
 
 ## Next Steps
 
 ### Immediate (Before V1 Release)
-1. **Test with Real Data**: Run index build with Scryfall API
-2. **Validate Deck Building**: Build a test deck and verify legality
-3. **Fix Any Bugs**: Address issues found during testing
-4. **Add Basic Error Handling**: Improve error messages and edge case handling
+1. **Test Full Index Build**: Run index build with `game:paper is:commander-legal` query to get all cards (not just commanders)
+2. **Validate Deck Legality**: Verify built decks are actually legal (99 cards, color identity matches, etc.)
+3. **Test Land Selection**: Verify lands are properly selected when full card database is indexed
+4. **Edge Case Testing**: Test with various commanders and color combinations
 
 ### Phase 2 (Post-V1)
 - Scoring refinement
@@ -215,7 +223,17 @@ Following the plan in `plan.md`, we're implementing Phase 1 (Hard Core) componen
 
 ## Version History
 
-### 2024-12-19 - Initial Implementation
+### 2024-12-30 - Bug Fixes and Testing
+- ✅ Fixed DuckDB array syntax (ARRAY<VARCHAR> → VARCHAR[])
+- ✅ Fixed DuckDB cursor description access (use relation.description, not conn.description)
+- ✅ Fixed SQL IN clause parameterization (proper placeholder handling)
+- ✅ Added comprehensive error handling throughout CLI and deck builder
+- ✅ Tested index building with Scryfall API (11,186 cards)
+- ✅ Tested deck building with real commander (Atraxa)
+- ✅ Updated default index query to get all commander-legal cards
+- Ready for full integration testing
+
+### 2024-12-29 - Initial Implementation
 - ✅ All Phase 1 components implemented
 - ✅ CLI interface created
 - ✅ Project structure and documentation complete

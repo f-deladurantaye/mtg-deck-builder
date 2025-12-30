@@ -16,7 +16,7 @@ from .roles.role_engine import RoleEngine
 def build_index(
     cache_path: Path = Path("scryfall_cache.db"),
     index_path: Path = Path("card_index.duckdb"),
-    query: str = "is:commander",
+    query: str = "game:paper is:commander-legal",
 ) -> CardIndex:
     """Build the card index from Scryfall data.
 
@@ -27,41 +27,84 @@ def build_index(
 
     Returns:
         Populated CardIndex
+
+    Raises:
+        SystemExit: If index building fails
     """
     print(f"Building card index from Scryfall (query: {query})...")
 
-    # Initialize components
-    cache = ScryfallCache(cache_path)
-    client = ScryfallClient(cache)
-    index = CardIndex(index_path)
+    try:
+        # Initialize components
+        cache = ScryfallCache(cache_path)
+        client = ScryfallClient(cache)
+        index = CardIndex(index_path)
 
-    # Fetch cards
-    print("Fetching cards from Scryfall API...")
-    cards = client.get_all_cards(query, use_cache=True)
-    print(f"Fetched {len(cards)} cards")
+        # Fetch cards
+        print("Fetching cards from Scryfall API...")
+        try:
+            cards = client.get_all_cards(query, use_cache=True)
+        except Exception as e:
+            print(f"Error: Failed to fetch cards from Scryfall API: {e}")
+            print("This might be a network issue or invalid query. Try again later.")
+            raise SystemExit(1)
 
-    # Normalise and index
-    print("Normalising and indexing cards...")
-    # role_engine = RoleEngine()
+        if not cards:
+            print("Warning: No cards found for query. Index will be empty.")
+            return index
 
-    for i, card_json in enumerate(cards):
-        if (i + 1) % 100 == 0:
-            print(f"  Processed {i + 1}/{len(cards)} cards...")
+        print(f"Fetched {len(cards)} cards")
 
-        # Normalise card
-        card = normalise_card(card_json)
+        # Normalise and index
+        print("Normalising and indexing cards...")
+        error_count = 0
 
-        # Extract features
-        features = extract_features(card)
+        for i, card_json in enumerate(cards):
+            if (i + 1) % 100 == 0:
+                print(f"  Processed {i + 1}/{len(cards)} cards...")
 
-        # Insert into index
-        index.insert_card(card)
-        index.insert_features(card["scryfall_id"], features)
+            try:
+                # Normalise card
+                card = normalise_card(card_json)
 
-    index.conn.commit()
-    print(f"Index built: {len(cards)} cards indexed")
+                # Skip if missing required fields
+                if not card.get("scryfall_id") or not card.get("name"):
+                    output_path = Path("output/missing_required_fields.json")
+                    if not output_path.exists():
+                        output_path.parent.mkdir(parents=True, exist_ok=True)
+                        output_path.touch()
+                    with open(output_path, "a") as f:
+                        json.dump(card_json, f, indent=2)
 
-    return index
+                    error_count += 1
+                    continue
+
+                # Extract features
+                features = extract_features(card)
+
+                # Insert into index
+                index.insert_card(card)
+                index.insert_features(card["scryfall_id"], features)
+            except Exception as e:
+                error_count += 1
+                if error_count <= 5:  # Only print first few errors
+                    print(f"  Warning: Error processing card {i + 1}: {e}")
+                
+                output_path = Path("output/error_cards.json")
+                if not output_path.exists():
+                    output_path.parent.mkdir(parents=True, exist_ok=True)
+                    output_path.touch()
+                with open(output_path, "a") as f:
+                    json.dump(card_json, f, indent=2)
+
+        index.conn.commit()
+        print(f"Index built: {len(cards) - error_count} cards indexed")
+        if error_count > 0:
+            print(f"  ({error_count} cards skipped due to errors)")
+
+        return index
+    except Exception as e:
+        print(f"Error: Failed to build index: {e}")
+        raise SystemExit(1)
 
 
 def build_deck(
@@ -82,42 +125,72 @@ def build_deck(
 
     Returns:
         Deck build result dictionary
+
+    Raises:
+        SystemExit: If deck building fails
     """
     print(f"Building deck with commander: {commander}")
 
-    # Initialize components
-    index = CardIndex(index_path)
-    role_engine = RoleEngine()
-    builder = DeckBuilder(index, role_engine)
+    try:
+        # Check if index exists
+        if not index_path.exists():
+            print(f"Error: Index file not found at {index_path}")
+            print("Please run 'index' command first to build the card index.")
+            raise SystemExit(1)
 
-    # Create DeckBrief
-    brief = DeckBrief(
-        commander=commander,
-        color_identity=color_identity,
-        role_targets=role_targets,
-    )
+        # Initialize components
+        index = CardIndex(index_path)
+        role_engine = RoleEngine()
+        builder = DeckBuilder(index, role_engine)
 
-    # Build deck
-    result = builder.build_deck(brief)
+        # Create DeckBrief
+        brief = DeckBrief(
+            commander=commander,
+            color_identity=color_identity,
+            role_targets=role_targets,
+        )
 
-    # Print results
-    print(f"\nDeck built: {len(result['deck'])} cards")
-    print(f"Commander: {result['commander']['name']}")
-    print("\nRole counts:")
-    for role, count in result["role_counts"].items():
-        print(f"  {role}: {count}")
+        # Build deck
+        try:
+            result = builder.build_deck(brief)
+        except ValueError as e:
+            print(f"Error: {e}")
+            raise SystemExit(1)
+        except Exception as e:
+            print(f"Error: Failed to build deck: {e}")
+            raise SystemExit(1)
 
-    print("\nExplanation:")
-    for line in result["explanation"]:
-        print(f"  {line}")
+        # Validate deck size
+        deck_size = len(result["deck"])
+        if deck_size != 99:
+            print(f"Warning: Deck has {deck_size} cards, expected 99")
 
-    # Save if requested
-    if output_path:
-        with open(output_path, "w") as f:
-            json.dump(result, f, indent=2, default=str)
-        print(f"\nDeck saved to {output_path}")
+        # Print results
+        print(f"\nDeck built: {deck_size} cards")
+        print(f"Commander: {result['commander']['name']}")
+        print("\nRole counts:")
+        for role, count in result["role_counts"].items():
+            print(f"  {role}: {count}")
 
-    return result
+        print("\nExplanation:")
+        for line in result["explanation"]:
+            print(f"  {line}")
+
+        # Save if requested
+        if output_path:
+            try:
+                with open(output_path, "w") as f:
+                    json.dump(result, f, indent=2, default=str)
+                print(f"\nDeck saved to {output_path}")
+            except Exception as e:
+                print(f"Warning: Failed to save deck to {output_path}: {e}")
+
+        return result
+    except SystemExit:
+        raise
+    except Exception as e:
+        print(f"Error: Unexpected error during deck building: {e}")
+        raise SystemExit(1)
 
 
 def main() -> None:
@@ -138,8 +211,9 @@ def main() -> None:
     index_parser.add_argument(
         "--query",
         type=str,
-        default="is:commander",
-        help="Scryfall search query",
+        # default="game:paper is:commander",
+        default="game:paper is:commander-legal",
+        help="Scryfall search query (default: all commander-legal cards)",
     )
 
     # Build deck command
