@@ -1,0 +1,509 @@
+version: 1
+schema:
+  feature:
+    id: string
+    type: one_of [bool, int, float, str, set_str, enum, json]
+    description: string
+    category: string
+    extraction:
+      kind: one_of [scryfall_field, oracle_regex, type_line_regex, mana_cost_parse, derived, composite]
+      inputs: list_str
+      rule: string
+      params: json
+    constraints:
+      colours: optional_set_str
+      commander_only: optional_bool
+      card_types: optional_set_str
+      legality: optional_str
+    examples: optional_list_str
+
+categories:
+  - identity
+  - mana_curve
+  - card_type
+  - interaction
+  - protection
+  - card_advantage
+  - tutors
+  - ramp_fixing
+  - tokens
+  - sacrifice
+  - recursion_graveyard
+  - removal_boardwipes
+  - win_conditions
+  - tempo_control
+  - synergy_tags
+  - cost_budget
+  - meta_signals
+
+features:
+  # ---------- identity ----------
+  - id: colour_identity
+    type: set_str
+    category: identity
+    description: Colour identity (e.g., {G,U})
+    extraction:
+      kind: scryfall_field
+      inputs: ["color_identity"]
+      rule: "as_set"
+      params: {}
+
+  - id: colours
+    type: set_str
+    category: identity
+    description: Colours (non-identity) (e.g., {G,U})
+    extraction:
+      { kind: scryfall_field, inputs: ["colors"], rule: "as_set", params: {} }
+
+  - id: is_colourless
+    type: bool
+    category: identity
+    description: No colours and no colour identity
+    extraction:
+      kind: derived
+      inputs: ["colors", "color_identity"]
+      rule: "len(colors)==0 and len(color_identity)==0"
+      params: {}
+
+  # ---------- mana_curve ----------
+  - id: cmc
+    type: float
+    category: mana_curve
+    description: Mana value (MV)
+    extraction:
+      { kind: scryfall_field, inputs: ["cmc"], rule: "as_float", params: {} }
+
+  - id: mana_value_bin
+    type: enum
+    category: mana_curve
+    description: MV bin
+    extraction:
+      kind: derived
+      inputs: ["cmc"]
+      rule: "bin(cmc, [0,1,2,3,4,5,6,7], labels=['0','1','2','3','4','5','6','7+'])"
+      params: {}
+
+  - id: pips_total
+    type: int
+    category: mana_curve
+    description: Total coloured pips in mana_cost
+    extraction:
+      kind: mana_cost_parse
+      inputs: ["mana_cost"]
+      rule: "count_coloured_pips"
+      params: {}
+
+  - id: pips_by_colour
+    type: json
+    category: mana_curve
+    description: Coloured pips by colour
+    extraction:
+      kind: mana_cost_parse
+      inputs: ["mana_cost"]
+      rule: "pips_by_colour"
+      params: {}
+
+  - id: is_x_spell
+    type: bool
+    category: mana_curve
+    description: Has X in mana cost
+    extraction:
+      kind: mana_cost_parse
+      inputs: ["mana_cost"]
+      rule: "contains('X')"
+      params: {}
+
+  - id: is_modal
+    type: bool
+    category: mana_curve
+    description: Modal spell / choose one / choose two
+    extraction:
+      kind: oracle_regex
+      inputs: ["oracle_text"]
+      rule: "(?i)\\bchoose one\\b|\\bchoose two\\b|\\bchoose one or both\\b|\\bchoose\\b.*\\binstead\\b"
+      params: { match: true }
+
+  # ---------- card_type ----------
+  - id: type_line
+    type: str
+    category: card_type
+    description: Raw type line
+    extraction:
+      kind: scryfall_field
+      inputs: ["type_line"]
+      rule: "as_str"
+      params: {}
+
+  - id: card_types
+    type: set_str
+    category: card_type
+    description: Super types and types (Creature, Instant, etc.)
+    extraction:
+      kind: derived
+      inputs: ["type_line"]
+      rule: "parse_types(type_line)"
+      params: {}
+
+  - id: subtypes
+    type: set_str
+    category: card_type
+    description: Subtypes (Elf, Aura, etc.)
+    extraction:
+      kind: derived
+      inputs: ["type_line"]
+      rule: "parse_subtypes(type_line)"
+      params: {}
+
+  - id: is_legendary
+    type: bool
+    category: card_type
+    description: Legendary
+    extraction:
+      kind: type_line_regex
+      inputs: ["type_line"]
+      rule: "(?i)\\blegendary\\b"
+      params: { match: true }
+
+  - id: is_commander_legal
+    type: bool
+    category: card_type
+    description: Commander legal
+    extraction:
+      kind: scryfall_field
+      inputs: ["legalities.commander"]
+      rule: "equals('legal')"
+      params: {}
+
+  - id: is_creature
+    type: bool
+    category: card_type
+    description: Creature card
+    extraction:
+      kind: type_line_regex
+      inputs: ["type_line"]
+      rule: "(?i)\\bcreature\\b"
+      params: { match: true }
+
+  - id: is_instant
+    type: bool
+    category: card_type
+    description: Instant
+    extraction:
+      kind: type_line_regex
+      inputs: ["type_line"]
+      rule: "(?i)\\binstant\\b"
+      params: { match: true }
+
+  - id: is_sorcery
+    type: bool
+    category: card_type
+    description: Sorcery
+    extraction:
+      kind: type_line_regex
+      inputs: ["type_line"]
+      rule: "(?i)\\bsorcery\\b"
+      params: { match: true }
+
+  - id: is_enchantment
+    type: bool
+    category: card_type
+    description: Enchantment
+    extraction:
+      kind: type_line_regex
+      inputs: ["type_line"]
+      rule: "(?i)\\benchantment\\b"
+      params: { match: true }
+
+  - id: is_artifact
+    type: bool
+    category: card_type
+    description: Artifact
+    extraction:
+      kind: type_line_regex
+      inputs: ["type_line"]
+      rule: "(?i)\\bartifact\\b"
+      params: { match: true }
+
+  - id: is_planeswalker
+    type: bool
+    category: card_type
+    description: Planeswalker
+    extraction:
+      kind: type_line_regex
+      inputs: ["type_line"]
+      rule: "(?i)\\bplaneswalker\\b"
+      params: { match: true }
+
+  - id: is_land
+    type: bool
+    category: card_type
+    description: Land
+    extraction:
+      kind: type_line_regex
+      inputs: ["type_line"]
+      rule: "(?i)\\bland\\b"
+      params: { match: true }
+
+  - id: is_utility_land
+    type: bool
+    category: card_type
+    description: Land that does something besides mana
+    extraction:
+      kind: composite
+      inputs: ["type_line", "oracle_text"]
+      rule: "is_land and (oracle_text !~ '(?i)^\\{T\\}: Add' or oracle_text ~ '(?i)draw|destroy|exile|return|create|sacrifice|counter|search|mill|deal|gain')"
+      params: {}
+
+  - id: is_mdfc
+    type: bool
+    category: card_type
+    description: Modal double-faced card
+    extraction:
+      kind: scryfall_field
+      inputs: ["layout"]
+      rule: "in(['modal_dfc','transform','double_faced_token'])"
+      params: {}
+
+  # ---------- ramp_fixing ----------
+  - id: produces_mana
+    type: bool
+    category: ramp_fixing
+    description: Produces mana
+    extraction:
+      kind: derived
+      inputs: ["produced_mana"]
+      rule: "len(produced_mana)>0"
+      params: {}
+
+  - id: produced_mana
+    type: set_str
+    category: ramp_fixing
+    description: Produced mana colours (Scryfall produced_mana)
+    extraction:
+      kind: scryfall_field
+      inputs: ["produced_mana"]
+      rule: "as_set"
+      params: {}
+
+  - id: is_mana_rock
+    type: bool
+    category: ramp_fixing
+    description: Artifact that taps for mana
+    extraction:
+      kind: composite
+      inputs: ["type_line", "oracle_text"]
+      rule: "is_artifact and oracle_text ~ '(?i)\\{T\\}: Add'"
+      params: {}
+
+  - id: is_mana_dork
+    type: bool
+    category: ramp_fixing
+    description: Creature that taps for mana
+    extraction:
+      kind: composite
+      inputs: ["type_line", "oracle_text"]
+      rule: "is_creature and oracle_text ~ '(?i)\\{T\\}: Add'"
+      params: {}
+
+  - id: ramp_land_search
+    type: bool
+    category: ramp_fixing
+    description: Searches lands onto battlefield/hand
+    extraction:
+      kind: oracle_regex
+      inputs: ["oracle_text"]
+      rule: "(?i)search your library.*\\bland\\b"
+      params: { match: true }
+
+  - id: ramp_treasure
+    type: bool
+    category: ramp_fixing
+    description: Creates Treasure
+    extraction:
+      kind: oracle_regex
+      inputs: ["oracle_text"]
+      rule: "(?i)create.*treasure token"
+      params: { match: true }
+
+  - id: mana_fixing
+    type: bool
+    category: ramp_fixing
+    description: Produces 2+ colours or fixes colours
+    extraction:
+      kind: derived
+      inputs: ["produced_mana", "oracle_text"]
+      rule: "len(produced_mana)>=2 or oracle_text ~ '(?i)add one mana of any color|any colour'"
+      params: {}
+
+  - id: is_cost_reducer
+    type: bool
+    category: ramp_fixing
+    description: Reduces costs of spells/abilities
+    extraction:
+      kind: oracle_regex
+      inputs: ["oracle_text"]
+      rule: "(?i)spells you cast cost \\{\\d+\\} less|costs? \\{\\d+\\} less to cast"
+      params: { match: true }
+
+  # ---------- card_advantage ----------
+  - id: draws_cards
+    type: bool
+    category: card_advantage
+    description: Draws one or more cards
+    extraction:
+      kind: oracle_regex
+      inputs: ["oracle_text"]
+      rule: "(?i)draw (a|two|three|four|\\d+) cards?"
+      params: { match: true }
+
+  - id: card_selection
+    type: bool
+    category: card_advantage
+    description: Scry/surveil/loot/impulse selection
+    extraction:
+      kind: oracle_regex
+      inputs: ["oracle_text"]
+      rule: "(?i)\\bscry\\b|\\bsurveil\\b|\\bdiscard\\b.*\\bdraw\\b|\\bexile\\b.*\\byou may play\\b"
+      params: { match: true }
+
+  - id: is_wheel
+    type: bool
+    category: card_advantage
+    description: Wheel effect
+    extraction:
+      kind: oracle_regex
+      inputs: ["oracle_text"]
+      rule: "(?i)discard your hand.*draw|each player discards.*draw"
+      params: { match: true }
+
+  - id: is_engine_repeatable
+    type: bool
+    category: card_advantage
+    description: Repeatable draw/advantage engine
+    extraction:
+      kind: oracle_regex
+      inputs: ["oracle_text"]
+      rule: "(?i)at the beginning of|whenever|each time"
+      params: { match: true }
+
+  - id: is_cantrip
+    type: bool
+    category: card_advantage
+    description: Cheap spell that draws (MV<=2 and draws)
+    extraction:
+      kind: composite
+      inputs: ["cmc", "oracle_text"]
+      rule: "cmc<=2 and oracle_text ~ '(?i)draw a card'"
+      params: {}
+
+  # ---------- tutors ----------
+  - id: is_tutor
+    type: bool
+    category: tutors
+    description: Searches library for a card (broad)
+    extraction:
+      kind: oracle_regex
+      inputs: ["oracle_text"]
+      rule: "(?i)search your library for (a|an|target|up to one) (card|\\w+ card)"
+      params: { match: true }
+
+  - id: tutor_to_hand
+    type: bool
+    category: tutors
+    description: Tutor puts into hand
+    extraction:
+      kind: oracle_regex
+      inputs: ["oracle_text"]
+      rule: "(?i)search your library.*put (it|that card) into your hand"
+      params: { match: true }
+
+  - id: tutor_to_battlefield
+    type: bool
+    category: tutors
+    description: Tutor puts onto battlefield
+    extraction:
+      kind: oracle_regex
+      inputs: ["oracle_text"]
+      rule: "(?i)search your library.*put (it|that card).*onto the battlefield"
+      params: { match: true }
+
+  - id: tutor_restricted
+    type: set_str
+    category: tutors
+    description: Restricted tutor domains (land/artifact/enchantment/creature/etc.)
+    extraction:
+      kind: derived
+      inputs: ["oracle_text"]
+      rule: "extract_tutor_domains(oracle_text)"
+      params: {}
+
+  # ---------- interaction / removal ----------
+  - id: is_counterspell
+    type: bool
+    category: interaction
+    description: Counters a spell/ability
+    extraction:
+      kind: oracle_regex
+      inputs: ["oracle_text"]
+      rule: "(?i)counter target (spell|activated ability|triggered ability)"
+      params: { match: true }
+
+  - id: is_removal_single
+    type: bool
+    category: removal_boardwipes
+    description: Single-target removal
+    extraction:
+      kind: oracle_regex
+      inputs: ["oracle_text"]
+      rule: "(?i)destroy target|exile target|deal \\d+ damage to target|return target .* to its owner's hand"
+      params: { match: true }
+
+  - id: is_boardwipe
+    type: bool
+    category: removal_boardwipes
+    description: Sweeper / mass removal
+    extraction:
+      kind: oracle_regex
+      inputs: ["oracle_text"]
+      rule: "(?i)destroy all|exile all|each creature|each nonland permanent|all creatures get"
+      params: { match: true }
+
+  - id: is_grave_hate
+    type: bool
+    category: interaction
+    description: Exiles graveyards / prevents graveyard use
+    extraction:
+      kind: oracle_regex
+      inputs: ["oracle_text"]
+      rule: "(?i)exile (all )?cards from (a|target|each) graveyard|graveyards? can't|cards in graveyards? can't"
+      params: { match: true }
+
+  - id: is_stack_interaction
+    type: bool
+    category: interaction
+    description: Stack interaction (counter/copy/redirect)
+    extraction:
+      kind: oracle_regex
+      inputs: ["oracle_text"]
+      rule: "(?i)counter|copy target spell|change the target"
+      params: { match: true }
+
+  - id: is_discard
+    type: bool
+    category: interaction
+    description: Forces discard
+    extraction:
+      kind: oracle_regex
+      inputs: ["oracle_text"]
+      rule: "(?i)target player discards|each opponent discards"
+      params: { match: true }
+
+  - id: is_tax_stax
+    type: bool
+    category: tempo_control
+    description: Taxes/locks actions
+    extraction:
+      kind: oracle_regex
+      inputs: ["oracle_text"]
+      rule: "(?i)spells cost \\{\\d+\\} more|can't cast more than|players can't|skip (their|your) (untap|draw)|doesn't untap"
+      params: { match: true }

@@ -1,0 +1,306 @@
+version: "1.0"
+source_of_truth: "scryfall"
+normalised_fields:
+  - name
+  - oracle_text
+  - type_line
+  - mana_cost
+  - cmc
+  - color_identity
+  - produced_mana
+  - keywords
+  - legalities.commander
+  - prices.usd
+  - prices.usd_foil
+  - prices.eur
+  - prices.tix
+  - rarity
+  - layout
+  - card_faces[].oracle_text
+  - card_faces[].type_line
+  - card_faces[].mana_cost
+  - card_faces[].colors
+  - card_faces[].color_indicator
+
+feature_types:
+  bool: {default: false}
+  int: {default: 0}
+  float: {default: 0.0}
+  enum: {default: null}
+  set: {default: []}
+
+# Conventions:
+# - signals / anti_signals are evaluated over "text_blob" (oracle_text + type_line + keywords + mana_cost)
+# - multi-face cards should build text_blob from all faces
+# - "requires" is a list of prerequisite feature ids that must be true (or present) for this feature to be allowed
+# - "extract" indicates the intended extractor family; implementers can map these to Python handlers
+
+features:
+
+  # ---------- Identity & legality ----------
+  - id: is_commander_legal
+    type: bool
+    extract: legality_equals
+    params: {format: commander, value: legal}
+
+  - id: is_partner
+    type: bool
+    extract: regex_any
+    params:
+      signals:
+        - '\bPartner\b'
+        - '\bPartner with\b'
+      anti_signals: []
+
+  - id: is_companion
+    type: bool
+    extract: regex_any
+    params:
+      signals: ['\bCompanion\b']
+      anti_signals: []
+
+  # ---------- Card type flags ----------
+  - id: is_creature
+    type: bool
+    extract: type_includes
+    params: {needle: "Creature"}
+
+  - id: is_instant
+    type: bool
+    extract: type_includes
+    params: {needle: "Instant"}
+
+  - id: is_sorcery
+    type: bool
+    extract: type_includes
+    params: {needle: "Sorcery"}
+
+  - id: is_artifact
+    type: bool
+    extract: type_includes
+    params: {needle: "Artifact"}
+
+  - id: is_enchantment
+    type: bool
+    extract: type_includes
+    params: {needle: "Enchantment"}
+
+  - id: is_planeswalker
+    type: bool
+    extract: type_includes
+    params: {needle: "Planeswalker"}
+
+  - id: is_battle
+    type: bool
+    extract: type_includes
+    params: {needle: "Battle"}
+
+  - id: is_land
+    type: bool
+    extract: type_includes
+    params: {needle: "Land"}
+
+  - id: is_legendary
+    type: bool
+    extract: type_includes
+    params: {needle: "Legendary"}
+
+  - id: is_token_generator
+    type: bool
+    extract: regex_any
+    params:
+      signals:
+        - '\bcreate\b.*\btoken\b'
+        - '\bincubate\b'
+      anti_signals:
+        - '\btoken copy\b'  # heuristic: copying tokens isn't always generation
+
+  # ---------- Cost / curve / efficiency ----------
+  - id: mv
+    type: float
+    extract: field
+    params: {field: cmc}
+
+  - id: is_one_drop
+    type: bool
+    extract: numeric_lte
+    params: {field: cmc, value: 1}
+
+  - id: is_two_drop
+    type: bool
+    extract: numeric_equals
+    params: {field: cmc, value: 2}
+
+  - id: is_low_mv
+    type: bool
+    extract: numeric_lte
+    params: {field: cmc, value: 3}
+
+  - id: is_high_mv
+    type: bool
+    extract: numeric_gte
+    params: {field: cmc, value: 6}
+
+  - id: has_cost_reduction
+    type: bool
+    extract: regex_any
+    params:
+      signals:
+        - '\bcosts?\b.*\bless\b'
+        - '\breduce the cost\b'
+        - '\bthis spell costs\b.*\bless\b'
+      anti_signals:
+        - '\bunless\b.*\bcosts\b'   # avoid conditional corner cases early
+
+  # ---------- Mana / ramp ----------
+  - id: produces_mana
+    type: bool
+    extract: field_nonempty
+    params: {field: produced_mana}
+
+  - id: produces_coloured_mana
+    type: bool
+    extract: produced_mana_contains_any
+    params: {symbols: ["W", "U", "B", "R", "G"]}
+
+  - id: is_mana_rock
+    type: bool
+    extract: all_of
+    params:
+      requires: ["is_artifact"]
+      signals:
+        - '\{T\}:\s*Add'
+      anti_signals:
+        - '\bAdd one mana of any color\b.*\bonly to cast\b'  # overly narrow ramp
+
+  - id: is_mana_dork
+    type: bool
+    extract: all_of
+    params:
+      requires: ["is_creature"]
+      signals:
+        - '\{T\}:\s*Add'
+      anti_signals: []
+
+  - id: ramps_lands
+    type: bool
+    extract: regex_any
+    params:
+      signals:
+        - '\bsearch your library\b.*\bland\b'
+        - '\bput\b.*\bland\b.*\bonto the battlefield\b'
+      anti_signals:
+        - '\bsearch your library\b.*\bfor a basic land card\b.*\bput it into your hand\b'  # may be slow; still ramp-ish, but separate feature below
+
+  - id: land_to_hand
+    type: bool
+    extract: regex_any
+    params:
+      signals:
+        - '\bsearch your library\b.*\bbasic land\b.*\bput it into your hand\b'
+        - '\breveal\b.*\bland\b.*\bput it into your hand\b'
+      anti_signals: []
+
+  - id: fixes_mana_any_colour
+    type: bool
+    extract: regex_any
+    params:
+      signals:
+        - '\bAdd one mana of any color\b'
+        - '\bAdd one mana of any colour\b'
+        - '\bAdd\b.*\bmana of any color\b'
+        - '\bAdd\b.*\bmana of any colour\b'
+      anti_signals: []
+
+  # ---------- Draw / selection / advantage ----------
+  - id: draws_cards
+    type: bool
+    extract: regex_any
+    params:
+      signals:
+        - '\bdraw\b.*\bcard\b'
+        - '\bdraw two cards\b'
+        - '\bdraw three cards\b'
+      anti_signals:
+        - '\bthen discard\b'  # still card selection; separated below
+
+  - id: loots
+    type: bool
+    extract: regex_any
+    params:
+      signals:
+        - '\bdraw\b.*\bthen discard\b'
+        - '\bdiscard\b.*\bthen draw\b'
+      anti_signals: []
+
+  - id: rummages
+    type: bool
+    extract: regex_any
+    params:
+      signals:
+        - '\bdiscard\b.*\bthen draw\b'
+      anti_signals: []
+
+  - id: impulse_draw
+    type: bool
+    extract: regex_any
+    params:
+      signals:
+        - '\bexile\b.*\bYou may play\b'
+        - '\bexile\b.*\bYou may cast\b'
+      anti_signals:
+        - '\buntil end of turn\b'  # still impulse, but time-limited; split below
+
+  - id: impulse_draw_time_limited
+    type: bool
+    extract: regex_any
+    params:
+      signals:
+        - '\bexile\b.*\bYou may play\b.*\buntil end of turn\b'
+        - '\bexile\b.*\bYou may cast\b.*\buntil end of turn\b'
+      anti_signals: []
+
+  - id: tutors_library
+    type: bool
+    extract: regex_any
+    params:
+      signals:
+        - '\bsearch your library\b.*\bfor\b'
+        - '\btutor\b'
+      anti_signals:
+        - '\bsearch your library\b.*\bbasic land\b'  # handled by land ramp features
+
+  - id: is_tutor
+    type: bool
+    extract: feature_alias
+    params: {of: tutors_library}
+
+  - id: topdeck_selection
+    type: bool
+    extract: regex_any
+    params:
+      signals:
+        - '\bscry\b'
+        - '\blook at the top\b.*\bcards of your library\b'
+        - '\breveal the top\b.*\bcards of your library\b'
+      anti_signals: []
+
+  - id: graveyard_selection
+    type: bool
+    extract: regex_any
+    params:
+      signals:
+        - '\bmill\b'
+        - '\bput\b.*\bfrom the top\b.*\binto your graveyard\b'
+        - '\bsurveil\b'
+      anti_signals: []
+
+  # ---------- Removal / interaction ----------
+  - id: is_removal_single_target
+    type: bool
+    extract: regex_any
+    params:
+      signals:
+        - '\bdestroy target\b'
+        - '\bexile target\b'
+        - '\bde
