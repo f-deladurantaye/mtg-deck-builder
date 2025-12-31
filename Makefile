@@ -1,21 +1,23 @@
 .PHONY: fmt lint fix type test all
 
+RUN := uv run
+
 SRC_DIR := src/
 TEST_DIR := tests/
 
 fmt:
-	uv run ruff format $(SRC_DIR) $(TEST_DIR)
+	$(RUN) ruff format $(SRC_DIR) $(TEST_DIR)
 
 lint:
-	uv run ruff check $(SRC_DIR) $(TEST_DIR)
+	$(RUN) ruff check $(SRC_DIR) $(TEST_DIR)
 
 fix:
-	uv run ruff check --fix $(SRC_DIR) $(TEST_DIR)
+	$(RUN) ruff check --fix $(SRC_DIR) $(TEST_DIR)
 
 type:
-	uv run ty check $(SRC_DIR) $(TEST_DIR)
+	$(RUN) ty check $(SRC_DIR) $(TEST_DIR)
 
 test:
-	uv run pytest
+	$(RUN) pytest
 
 all: fmt lint type test

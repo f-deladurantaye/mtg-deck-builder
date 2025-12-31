@@ -26,7 +26,7 @@ uv pip install -e .
 First, build the card index from Scryfall data:
 
 ```bash
-mtg-deck-builder index --query "is:commander"
+mtg-deck-builder index --query "game:paper is:commander-legal"
 ```
 
 This will:
@@ -39,7 +39,7 @@ Options:
 
 - `--cache PATH`: Path to SQLite cache (default: `scryfall_cache.db`)
 - `--index PATH`: Path to DuckDB index (default: `card_index.duckdb`)
-- `--query QUERY`: Scryfall search query (default: `is:commander`)
+- `--query QUERY`: Scryfall search query (default: `game:paper is:commander-legal`)
 
 ### 2. Build a Deck
 
@@ -66,6 +66,16 @@ Options:
 - `--index PATH`: Path to DuckDB index (default: `card_index.duckdb`)
 - `--output PATH`: Optional JSON output path
 
+## Refreshing the Card Index
+
+To refresh the card index with the latest data from Scryfall, simply re-run the index command:
+
+```bash
+mtg-deck-builder index
+```
+
+This will fetch fresh card data, update the cache, and rebuild the DuckDB index. The process is deterministic, so running it multiple times with the same query will produce the same results.
+
 ## Architecture
 
 ### Core Components
@@ -86,14 +96,45 @@ Roles are compositions of features, not hard-coded labels:
 - **interaction**: Requires any of `removes_creature`, `removes_noncreature`, `is_board_wipe`
 - **finisher**: Requires `is_finisher`
 
+## Project Organization
+
+The project follows a modular structure for maintainability and testability:
+
+- **`src/mtg_deck_builder/`**: Main package
+  - **`cache/`**: Scryfall API caching (SQLite-based)
+  - **`data/`**: Card data handling (normalization, DuckDB indexing)
+  - **`engine/`**: Core deck building logic
+  - **`features/`**: Atomic feature extraction from card text
+  - **`roles/`**: Role composition and matching engine
+  - **`cli.py`**: Command-line interface
+- **`tests/`**: Comprehensive test suite covering all modules
+- **`docs/`**: Project documentation (plan, progress, features)
+- **`output/`**: Generated deck files and test outputs
+- **`pyproject.toml`**: Project configuration and dependencies
+- **`Makefile`**: Build and utility scripts
+
 ## Development
 
-```bash
-# Run linter
-ruff check src/
+The project uses a Makefile for common development tasks:
 
-# Run type checker
-ty check src/
+```bash
+# Format code
+make fmt
+
+# Lint code
+make lint
+
+# Auto-fix linting issues
+make fix
+
+# Type check
+make type
+
+# Run tests
+make test
+
+# Run all checks (format, lint, type, test)
+make all
 ```
 
 ## Project Status

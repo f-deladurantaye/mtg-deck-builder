@@ -192,3 +192,19 @@ class TestScryfallClient:
 
         # Should have made API calls (since not cached)
         assert mock_get.call_count == 2
+
+
+class TestScryfallIntegration:
+    """Integration tests with real Scryfall API (requires internet)."""
+
+    def test_real_api_search(self, temp_db_path):
+        """Test searching with real Scryfall API."""
+        cache = ScryfallCache(temp_db_path)
+        client = ScryfallClient(cache)
+
+        # Search for a known card
+        cards = client.get_all_cards("lightning bolt", use_cache=False)
+
+        # Should find at least one card
+        assert len(cards) > 0
+        assert any(card.get("name") == "Lightning Bolt" for card in cards)
