@@ -19,6 +19,23 @@ uv sync
 uv pip install -e .
 ```
 
+## Streamlit UI
+
+A minimal Streamlit web UI is available for testing the deck builder:
+
+```bash
+# Run the Streamlit app
+make ui
+```
+
+The UI provides:
+
+- Index building interface
+- Deck building form with commander selection and role targets
+- Deck summary and download options
+
+This UI is designed for testing and will be replaced by a production solution.
+
 ## Usage
 
 ### 1. Build the Card Index

@@ -18,6 +18,9 @@ dev = [
     "pytest>=9.0.2",
     "ruff>=0.14.10",
     "ty>=0.0.8",
+    "streamlit>=1.52.0",
+    "watchdog>=6.0.0",
+    "streamlit-searchbox>=0.1.24",
 ]
 
 [build-system]

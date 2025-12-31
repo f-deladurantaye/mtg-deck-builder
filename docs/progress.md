@@ -2,7 +2,7 @@
 
 This document tracks the implementation progress of the MTG Commander Deck Builder project.
 
-Last updated: 2025-12-30
+Last updated: 2025-12-31
 
 ## Overview
 
@@ -152,6 +152,23 @@ Following the plan in `plan.md`, we're implementing Phase 1 (Hard Core) componen
 
 ---
 
+### ✅ Streamlit UI
+**Status**: Complete  
+**Files**: 
+- `streamlit_app.py`
+- `docs/streamlit_ui.md`
+
+**Implementation**:
+- Minimal web UI for testing the deck builder
+- Commander selection with database-driven autocomplete
+- Deck building form with role targets
+- Deck summary, list display, and download functionality
+- Independent from core logic for testing purposes
+
+**Notes**: UI is functional for testing. Designed to be replaced by production solution.
+
+---
+
 ### ✅ Project Setup
 **Status**: Complete  
 **Files**: 
@@ -242,6 +259,14 @@ Following the plan in `plan.md`, we're implementing Phase 1 (Hard Core) componen
 ---
 
 ## Version History
+
+### 2025-12-31 - Streamlit UI Complete
+- ✅ Implemented minimal Streamlit web UI for testing
+- ✅ Added database-driven autocomplete for commander selection
+- ✅ Added deck building form with persistent results and download
+- ✅ Created comprehensive UI documentation
+- ✅ Updated README with UI usage instructions
+- Project ready for user testing with both CLI and UI interfaces
 
 ### 2025-12-30 - Testing and Type Fixes Complete
 - ✅ Implemented comprehensive test suite (73 tests passing)

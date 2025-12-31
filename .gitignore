@@ -212,4 +212,5 @@ __marimo__/
 *.duckdb
 
 # Output files
+decks/
 output/

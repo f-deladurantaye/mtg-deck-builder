@@ -9,7 +9,7 @@ import json
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 
 class ScryfallCache:
@@ -57,7 +57,7 @@ class ScryfallCache:
             )
             conn.commit()
 
-    def get(self, query: str, page: int = 1) -> Optional[dict[str, Any]]:
+    def get(self, query: str, page: int = 1) -> dict[str, Any] | None:
         """Retrieve a cached response."""
         with sqlite3.connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
