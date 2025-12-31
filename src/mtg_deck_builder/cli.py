@@ -88,6 +88,7 @@ def build_index(
                 error_count += 1
                 if error_count <= 5:  # Only print first few errors
                     print(f"  Warning: Error processing card {i + 1}: {e}")
+
                 output_path = Path("output/error_cards.json")
                 if not output_path.exists():
                     output_path.parent.mkdir(parents=True, exist_ok=True)
