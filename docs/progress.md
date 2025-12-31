@@ -183,7 +183,7 @@ Following the plan in `plan.md`, we're implementing Phase 1 (Hard Core) componen
 
 ## Known Issues / TODOs
 
-1. **Color Identity Filtering**: Simplified implementation - only checks array length, not actual subset matching. Full implementation would check that card's color_identity is a subset of the deck's color_identity.
+1. **Color Identity Filtering**: ✅ **FIXED** - Implemented proper subset checking in Python after SQL queries
 2. **Land Selection**: Basic land selection - may need better logic for color identity matching (e.g., prioritize lands that match deck colors)
 3. **Feature Extraction**: Regex patterns may miss edge cases - needs testing with real cards
 4. **Index Query**: Default query should index all commander-legal cards, not just commanders. Updated to `game:paper is:commander-legal` but needs testing with full dataset.
@@ -196,18 +196,20 @@ Following the plan in `plan.md`, we're implementing Phase 1 (Hard Core) componen
 2. **Fixed DuckDB Cursor Description**: Updated all queries to access `.description` from relation objects, not connection
 3. **Fixed SQL IN Clause Parameterization**: Properly parameterized all SQL queries with IN clauses
 4. **Added Error Handling**: Added comprehensive error handling throughout CLI and deck builder
-5. **Tested Index Building**: Successfully tested with Scryfall API (11,186 cards indexed)
-6. **Tested Deck Building**: Successfully built a 99-card deck with Atraxa, Praetors' Voice
+5. **Tested Index Building**: Successfully tested with Scryfall API (30,859 cards indexed)
+6. **Tested Deck Building**: Successfully built 99-card decks with proper color identity filtering
+7. **Fixed Color Identity Filtering**: Added Python-based subset checking for all card selection methods
+8. **Fixed Filler Card Selection**: Rewrote _get_filler_cards to avoid DuckDB IN clause limitations with many parameters
 
 ---
 
 ## Next Steps
 
 ### Immediate (Before V1 Release)
-1. **Test Full Index Build**: Run index build with `game:paper is:commander-legal` query to get all cards (not just commanders)
-2. **Validate Deck Legality**: Verify built decks are actually legal (99 cards, color identity matches, etc.)
+1. ✅ **Test Full Index Build**: Run index build with `game:paper is:commander-legal` query to get all cards (not just commanders)
+2. ✅ **Validate Deck Legality**: Verify built decks are actually legal (99 cards, color identity matches, etc.)
 3. **Test Land Selection**: Verify lands are properly selected when full card database is indexed
-4. **Edge Case Testing**: Test with various commanders and color combinations
+4. ✅ **Edge Case Testing**: Test with various commanders and color combinations
 
 ### Phase 2 (Post-V1)
 - Scoring refinement

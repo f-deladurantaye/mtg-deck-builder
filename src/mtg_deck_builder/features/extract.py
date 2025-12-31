@@ -184,6 +184,8 @@ def _recurs_from_graveyard(oracle_text: str) -> bool:
         r"return.*from.*graveyard",
         r"return.*from.*yard",
         r"return target.*card.*from.*graveyard",
+        r"put.*from.*graveyard.*battlefield",
+        r"put target.*card.*from.*graveyard",
     ]
     for pattern in recursion_patterns:
         if re.search(pattern, oracle_text, re.IGNORECASE):

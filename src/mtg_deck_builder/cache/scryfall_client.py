@@ -18,6 +18,7 @@ class ScryfallClient:
             cache: Optional ScryfallCache instance. If None, creates default cache.
         """
         self.cache = cache or ScryfallCache()
+        self.base_url = self.BASE_URL
 
     def search_cards(
         self, query: str, page: int = 1, use_cache: bool = True
@@ -44,14 +45,22 @@ class ScryfallClient:
         url = f"{self.BASE_URL}/cards/search"
         params = {"q": query, "page": page}
         response = requests.get(url, params=params, timeout=30)
-        response.raise_for_status()
-        data = response.json()
+        if response.status_code == 404:
+            # No results found
+            data = {"data": [], "has_more": False}
+        else:
+            response.raise_for_status()
+            data = response.json()
 
         # Cache the response
         if use_cache:
             self.cache.set(cache_key, data, page)
 
         return data
+
+    def _get_page(self, query: str, page: int):
+        """Get a single page of search results."""
+        return self.search_cards(query, page)["data"]
 
     def get_all_cards(
         self, query: str = "is:commander", use_cache: bool = True

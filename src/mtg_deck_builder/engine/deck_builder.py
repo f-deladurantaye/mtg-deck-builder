@@ -153,7 +153,14 @@ class DeckBuilder:
             relation = self.card_index.conn.execute(query, params)
             result = relation.fetchall()
             columns = [col[0] for col in relation.description]
-            return [dict(zip(columns, row)) for row in result]
+            lands = [dict(zip(columns, row)) for row in result]
+            # Filter by color identity
+            lands = [
+                land
+                for land in lands
+                if self._card_matches_color_identity(land, color_identity)
+            ]
+            return lands
         except Exception as e:
             # Return empty list on error rather than crashing
             print(f"Warning: Error fetching lands: {e}")
@@ -240,9 +247,11 @@ class DeckBuilder:
                     }
 
                     if self.role_engine.card_matches_role(features, role_name):
-                        candidates.append(card)
-                        if len(candidates) >= needed:
-                            break
+                        # Check color identity
+                        if self._card_matches_color_identity(card, color_identity):
+                            candidates.append(card)
+                            if len(candidates) >= needed:
+                                break
             except Exception as e:
                 print(f"Warning: Error fetching features for card {card['name']}: {e}")
                 continue
@@ -259,57 +268,37 @@ class DeckBuilder:
         """Get filler cards to reach 99."""
         # Simple filler: any legal card not already in deck
         # Join with card_features to exclude lands
-        if exclusions and current_deck:
-            exclusion_placeholders = ",".join("?" * len(exclusions))
-            deck_placeholders = ",".join("?" * len(current_deck))
-            query = f"""
-                SELECT c.* FROM cards c
-                JOIN card_features cf ON c.scryfall_id = cf.scryfall_id
-                WHERE c.commander_legal = true
-                AND c.name NOT IN ({exclusion_placeholders})
-                AND c.scryfall_id NOT IN ({deck_placeholders})
-                AND cf.is_land_only = false
-                LIMIT ?
-            """
-            params = (
-                list(exclusions) + [c["scryfall_id"] for c in current_deck] + [needed]
-            )
-        elif exclusions:
-            exclusion_placeholders = ",".join("?" * len(exclusions))
-            query = f"""
-                SELECT c.* FROM cards c
-                JOIN card_features cf ON c.scryfall_id = cf.scryfall_id
-                WHERE c.commander_legal = true
-                AND c.name NOT IN ({exclusion_placeholders})
-                AND cf.is_land_only = false
-                LIMIT ?
-            """
-            params = list(exclusions) + [needed]
-        elif current_deck:
-            deck_placeholders = ",".join("?" * len(current_deck))
-            query = f"""
-                SELECT c.* FROM cards c
-                JOIN card_features cf ON c.scryfall_id = cf.scryfall_id
-                WHERE c.commander_legal = true
-                AND c.scryfall_id NOT IN ({deck_placeholders})
-                AND cf.is_land_only = false
-                LIMIT ?
-            """
-            params = [c["scryfall_id"] for c in current_deck] + [needed]
-        else:
-            query = """
-                SELECT c.* FROM cards c
-                JOIN card_features cf ON c.scryfall_id = cf.scryfall_id
-                WHERE c.commander_legal = true
-                AND cf.is_land_only = false
-                LIMIT ?
-            """
-            params = [needed]
+        used_ids = {c["scryfall_id"] for c in current_deck}
+        excluded_names = set(exclusions)
+
+        query = """
+            SELECT c.* FROM cards c
+            JOIN card_features cf ON c.scryfall_id = cf.scryfall_id
+            WHERE c.commander_legal = true
+            AND cf.is_land_only = false
+        """
+        params = []
+
+        if exclusions:
+            placeholders = ",".join("?" * len(exclusions))
+            query += f" AND c.name NOT IN ({placeholders})"
+            params.extend(exclusions)
 
         relation = self.card_index.conn.execute(query, params)
         result = relation.fetchall()
         columns = [col[0] for col in relation.description]
-        return [dict(zip(columns, row)) for row in result]
+        all_fillers = [dict(zip(columns, row)) for row in result]
+
+        # Filter by color identity and not used
+        fillers = [
+            card
+            for card in all_fillers
+            if self._card_matches_color_identity(card, color_identity)
+            and card["scryfall_id"] not in used_ids
+            and card["name"] not in excluded_names
+        ]
+
+        return fillers[:needed]
 
     def _get_card_by_name(
         self, card_name: str, color_identity: list[str]
@@ -321,5 +310,16 @@ class DeckBuilder:
 
         if result:
             columns = [col[0] for col in relation.description]
-            return dict(zip(columns, result))
+            card = dict(zip(columns, result))
+            # Check color identity
+            if self._card_matches_color_identity(card, color_identity):
+                return card
         return None
+
+    def _card_matches_color_identity(
+        self, card: dict[str, Any], deck_color_identity: list[str]
+    ) -> bool:
+        """Check if a card's color identity is a subset of the deck's color identity."""
+        card_ci = set(card.get("color_identity", []))
+        deck_ci = set(deck_color_identity)
+        return card_ci.issubset(deck_ci)

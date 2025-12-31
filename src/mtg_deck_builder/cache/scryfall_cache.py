@@ -20,6 +20,27 @@ class ScryfallCache:
         self.db_path = Path(db_path)
         self._init_db()
 
+    @property
+    def conn(self):
+        """Get a database connection."""
+        return sqlite3.connect(self.db_path)
+
+    def _init_db(self) -> None:
+        """Create the cache table if it doesn't exist."""
+        with sqlite3.connect(self.db_path) as conn:
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS cache (
+                    query TEXT NOT NULL,
+                    page INTEGER NOT NULL DEFAULT 1,
+                    response_json TEXT NOT NULL,
+                    fetched_at TIMESTAMP NOT NULL,
+                    PRIMARY KEY (query, page)
+                )
+                """
+            )
+            conn.commit()
+
     def _init_db(self) -> None:
         """Create the cache table if it doesn't exist."""
         with sqlite3.connect(self.db_path) as conn:
@@ -48,6 +69,10 @@ class ScryfallCache:
             if row:
                 return json.loads(row["response_json"])
             return None
+
+    def put(self, query: str, data: dict[str, Any]) -> None:
+        """Store a response in the cache."""
+        self.set(query, data, page=1)
 
     def set(self, query: str, response: dict[str, Any], page: int = 1) -> None:
         """Store a response in the cache."""
